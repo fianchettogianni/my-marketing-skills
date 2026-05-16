@@ -4,7 +4,7 @@ Guidelines for AI agents working in this repository.
 
 ## Repository Overview
 
-This repository contains **Agent Skills** for AI agents following the [Agent Skills specification](https://agentskills.io/specification.md). It also serves as a **Claude Code plugin marketplace** via `.claude-plugin/marketplace.json`.
+This repository contains **Agent Skills** for AI agents following the [Agent Skills specification](https://agentskills.io/specification.md). Skills install to `.agents/skills/` (the cross-agent standard). This repo also serves as a **Claude Code plugin marketplace** via `.claude-plugin/marketplace.json`.
 
 - **Name**: Marketing Skills
 - **GitHub**: [coreyhaines31/marketingskills](https://github.com/coreyhaines31/marketingskills)
@@ -20,6 +20,11 @@ marketingskills/
 ├── skills/                # Agent Skills
 │   └── skill-name/
 │       └── SKILL.md       # Required skill file
+├── tools/
+│   ├── clis/              # Zero-dependency Node.js CLI tools (51 tools)
+│   ├── composio/          # Composio integration layer (quick start + toolkit mapping)
+│   ├── integrations/      # API integration guides per tool
+│   └── REGISTRY.md        # Tool index with capabilities
 ├── CONTRIBUTING.md
 ├── LICENSE
 └── README.md
@@ -27,13 +32,18 @@ marketingskills/
 
 ## Build / Lint / Test Commands
 
-**Not applicable** - This is a content-only repository with no executable code.
-
-Verify manually:
+**Skills** are content-only (no build step). Verify manually:
 - YAML frontmatter is valid
 - `name` field matches directory name exactly
 - `name` is 1-64 chars, lowercase alphanumeric and hyphens only
 - `description` is 1-1024 characters
+
+**CLI tools** (`tools/clis/*.js`) are zero-dependency Node.js scripts (Node 18+). Verify with:
+```bash
+node --check tools/clis/<name>.js   # Syntax check
+node tools/clis/<name>.js           # Show usage (no args = help)
+node tools/clis/<name>.js <cmd> --dry-run  # Preview request without sending
+```
 
 ## Agent Skills Specification
 
@@ -64,7 +74,7 @@ description: What this skill does and when to use it. Include trigger phrases.
 - No consecutive hyphens (`--`)
 - Must match parent directory name exactly
 
-**Valid**: `page-cro`, `email-sequence`, `ab-test-setup`
+**Valid**: `cro`, `emails`, `ab-testing`
 **Invalid**: `Page-CRO`, `-page`, `page--cro`
 
 ### Optional Skill Directories
@@ -114,7 +124,7 @@ The `description` is critical for skill discovery. Include:
 3. Related skills for scope boundaries
 
 ```yaml
-description: When the user wants to optimize conversions on any marketing page. Use when the user says "CRO," "conversion rate optimization," "this page isn't converting." For signup flows, see signup-flow-cro.
+description: When the user wants to optimize conversions on any marketing page. Use when the user says "CRO," "conversion rate optimization," "this page isn't converting." For signup flows, see signup.
 ```
 
 ## Claude Code Plugin
@@ -141,7 +151,7 @@ See [Claude Code plugins documentation](https://code.claude.com/docs/en/plugins.
 Follow the [Conventional Commits](https://www.conventionalcommits.org/) specification:
 
 - `feat: add skill-name skill`
-- `fix: improve clarity in page-cro`
+- `fix: improve clarity in cro`
 - `docs: update README`
 
 ### Pull Request Checklist
@@ -158,7 +168,8 @@ This repository includes a tools registry for agent-compatible marketing tools.
 
 - **Tool discovery**: Read `tools/REGISTRY.md` to see available tools and their capabilities
 - **Integration details**: See `tools/integrations/{tool}.md` for API endpoints, auth, and common operations
-- **MCP-enabled tools**: ga4, stripe, mailchimp, google-ads, resend, zapier
+- **MCP-enabled tools**: ga4, stripe, mailchimp, google-ads, resend, zapier, zoominfo, clay, supermetrics, coupler, outreach, crossbeam, introw, composio
+- **Composio** (integration layer): Adds MCP access to OAuth-heavy tools without native MCP servers (HubSpot, Salesforce, Meta Ads, LinkedIn Ads, Google Sheets, Slack, etc.). See `tools/integrations/composio.md`
 
 ### Registry Structure
 
@@ -175,10 +186,12 @@ tools/
 ### When to Use Tools
 
 Skills reference relevant tools for implementation. For example:
-- `referral-program` skill → rewardful, tolt, dub-co, mention-me guides
-- `analytics-tracking` skill → ga4, mixpanel, segment guides
-- `email-sequence` skill → customer-io, mailchimp, resend guides
-- `paid-ads` skill → google-ads, meta-ads, linkedin-ads guides
+- `referrals` skill → rewardful, tolt, dub-co, mention-me guides
+- `analytics` skill → ga4, mixpanel, segment guides
+- `emails` skill → customer-io, mailchimp, resend guides
+- `ads` skill → google-ads, meta-ads, linkedin-ads guides
+
+For tools without native MCP servers (HubSpot, Salesforce, Meta Ads, LinkedIn Ads, Google Sheets, Slack, Notion), Composio provides MCP access via a single server. See `tools/integrations/composio.md` for setup and `tools/composio/marketing-tools.md` for the full toolkit mapping.
 
 ## Checking for Updates
 
@@ -206,3 +219,36 @@ When using any skill from this repository:
 ## Skill Categories
 
 See `README.md` for the current list of skills organized by category. When adding new skills, follow the naming patterns of existing skills in that category.
+
+## Claude Code-Specific Enhancements
+
+These patterns are **Claude Code only** and must not be added to `SKILL.md` files directly, as skills are designed to be cross-agent compatible (Codex, Cursor, Windsurf, etc.). Apply them locally in your own project's `.claude/skills/` overrides instead.
+
+### Dynamic content injection with `!`command``
+
+Claude Code supports embedding shell commands in SKILL.md using `` !`command` `` syntax. When the skill is invoked, Claude Code runs the command and injects the output inline — the model sees the result, not the instruction.
+
+**Most useful application: auto-inject the product marketing context file**
+
+Instead of every skill telling the agent "go check if `.agents/product-marketing.md` exists and read it," you can inject it automatically:
+
+```markdown
+Product context: !`cat .agents/product-marketing.md 2>/dev/null || echo "No product context file found — ask the user about their product before proceeding."`
+```
+
+Place this at the top of a skill's body (after frontmatter) to make context available immediately without any file-reading step.
+
+**Other useful injections:**
+
+```markdown
+# Inject today's date for recency-sensitive skills
+Today's date: !`date +%Y-%m-%d`
+
+# Inject current git branch (useful for workflow skills)
+Current branch: !`git branch --show-current 2>/dev/null`
+
+# Inject recent commits for context
+Recent commits: !`git log --oneline -5 2>/dev/null`
+```
+
+**Why this is Claude Code-only**: Other agents that load skills will see the literal `` !`command` `` string rather than executing it, which would appear as garbled instructions. Keep cross-agent skill files free of this syntax.
